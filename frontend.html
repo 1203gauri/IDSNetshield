@@ -1,0 +1,1453 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intrusion Detection System</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: auto;
+        }
+
+        #alert-box {
+            background-color: red;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        #traffic-warning {
+            color: red;
+            font-weight: bold;
+            display: none;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        button {
+            background-color: blue;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .table-container {
+            background: #222;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border: 1px solid gray;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #444;
+        }
+
+        .chart-container {
+            background: #222;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .red {
+            color: red;
+            font-weight: bold;
+        }
+
+        .green {
+            color: lime;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Intrusion Detection Dashboard</h1>
+
+        <div id="alert-box" class="hidden">⚠️ Intrusion detected! Check logs.</div>
+        <div id="traffic-warning">⚠️ No traffic data available!</div>
+
+        <button id="refresh-btn">🔄 Refresh Live Traffic</button>
+
+        <div class="table-container">
+            <h2>📊 Live Network Traffic</h2>
+            <table id="traffic-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Prediction</th>
+                        <th>Confidence (%)</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="chart-container">
+            <h2>📈 Intrusion Confidence Over Time</h2>
+            <canvas id="traffic-chart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:5000/";
+
+        const trafficTable = document.querySelector("#traffic-table tbody");
+        const alertBox = document.getElementById("alert-box");
+        const trafficWarning = document.getElementById("traffic-warning");
+        const refreshButton = document.getElementById("refresh-btn");
+
+        let chartData = [];
+        let chartInstance;
+
+        // Fetch live traffic data
+        async function fetchLiveTraffic() {
+            try {
+                const response = await fetch(`${API_URL}/live_traffic`);
+                const data = await response.json();
+        
+                if (data.error || !data.results || data.results.length === 0) {
+                    liveTrafficWarning.style.display = "block";  // Show "No traffic" message
+                    liveTrafficTable.innerHTML = "<tr><td colspan='3'>⚠️ No valid network traffic captured</td></tr>";
+                    return;
+                }
+        
+                liveTrafficWarning.style.display = "none";  // Hide warning if data exists
+                updateLiveTrafficTable(data.results);
+            } catch (error) {
+                console.error("Error fetching live traffic:", error);
+                alertBox.textContent = "⚠️ Error fetching live traffic!";
+                alertBox.classList.remove("hidden");
+            }
+        }
+        
+        // Fetch additional traffic data
+        async function fetchTrafficData() {
+            try {
+                const response = await fetch(`${API_URL}/get_traffic`);
+                const data = await response.json();
+        
+                if (!data.results || data.results.length === 0) {
+                    trafficWarning.style.display = "block"; // Show warning
+                    trafficTable.innerHTML = "<tr><td colspan='3'>No data available</td></tr>";
+                    return;
+                }
+        
+                trafficWarning.style.display = "none"; // Hide warning if data is found
+                updateTable(data.results);
+                updateChart(data.results);
+                checkIntrusionAlert(data.results);
+            } catch (error) {
+                console.error("Error fetching traffic data:", error);
+                alertBox.textContent = "⚠️ Error fetching data!";
+                alertBox.classList.remove("hidden");
+            }
+        }
+        
+        // Update traffic table
+        function updateTable(data) {
+            trafficTable.innerHTML = "";
+            data.forEach((item, index) => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td class="${item.traffic === "Intrusion Detected" ? "red" : "green"}">
+                        ${item.traffic}
+                    </td>
+                    <td>${item.confidence}%</td>
+                `;
+                trafficTable.appendChild(row);
+            });
+        }
+        
+
+        // Check for intrusion alerts
+        function checkIntrusionAlert(data) {
+            const intrusion = data.some(item => item.traffic === "Intrusion Detected");
+            if (intrusion) {
+                alertBox.classList.remove("hidden");
+            } else {
+                alertBox.classList.add("hidden");
+            }
+        }
+
+        // Update chart
+        function updateChart(data) {
+            chartData = data.map((item, index) => ({
+                id: index + 1,
+                confidence: item.confidence * 100
+            }));
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            const ctx = document.getElementById("traffic-chart").getContext("2d");
+            chartInstance = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: chartData.map(d => d.id),
+                    datasets: [{
+                        label: "Confidence (%)",
+                        data: chartData.map(d => d.confidence),
+                        borderColor: "#82ca9d",
+                        borderWidth: 2,
+                        fill: false
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: { title: { display: true, text: "Packet ID" } },
+                        y: { title: { display: true, text: "Confidence (%)" } }
+                    }
+                }
+            });
+        }
+
+        // Refresh button event
+        refreshButton.addEventListener("click", () => {
+            fetchLiveTraffic();
+            fetchTrafficData();
+        });
+
+        // Auto-refresh every 10 seconds
+        setInterval(() => {
+            fetchLiveTraffic();
+            fetchTrafficData();
+        }, 10000);
+
+        // Initial load
+        fetchLiveTraffic();
+        fetchTrafficData();
+    </script>
+</body>
+</html> -->
+
+
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intrusion Detection System</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+        }
+
+        #alert-box {
+            background-color: red;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: none;
+        }
+
+        #traffic-warning {
+            color: red;
+            font-weight: bold;
+            display: none;
+        }
+
+        .table-container, .chart-container {
+            background: #222;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border: 1px solid gray;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #444;
+        }
+
+        .red { color: red; font-weight: bold; }
+        .green { color: lime; font-weight: bold; }
+
+        .bot-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #222;
+            padding: 10px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        .bot-container button {
+            background-color: blue;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Intrusion Detection Dashboard</h1>
+        <div id="alert-box">⚠️ Intrusion detected! Check logs.</div>
+        <div id="traffic-warning">⚠️ No traffic data available!</div>
+        <button id="refresh-btn">🔄 Refresh Live Traffic</button>
+
+        <div class="table-container">
+            <h2>📊 Live Network Traffic</h2>
+            <table id="traffic-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Prediction</th>
+                        <th>Confidence (%)</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="chart-container">
+            <h2>📈 Intrusion Confidence Over Time</h2>
+            <canvas id="traffic-chart"></canvas>
+        </div>
+    </div>
+
+    <div class="bot-container">
+        <button onclick="openChatbot()">💬 AI Chatbot</button>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:5000/";
+        const trafficTable = document.querySelector("#traffic-table tbody");
+        const alertBox = document.getElementById("alert-box");
+        const trafficWarning = document.getElementById("traffic-warning");
+        const refreshButton = document.getElementById("refresh-btn");
+        let chartData = [];
+        let chartInstance;
+
+        async function fetchTrafficData() {
+            try {
+                const response = await fetch(`${API_URL}/get_traffic`);
+                const data = await response.json();
+                if (!data.results || data.results.length === 0) {
+                    trafficWarning.style.display = "block";
+                    trafficTable.innerHTML = "<tr><td colspan='3'>No data available</td></tr>";
+                    return;
+                }
+                trafficWarning.style.display = "none";
+                updateTable(data.results);
+                updateChart(data.results);
+                checkIntrusionAlert(data.results);
+            } catch (error) {
+                console.error("Error fetching traffic data:", error);
+                alertBox.textContent = "⚠️ Error fetching data!";
+                alertBox.style.display = "block";
+            }
+        }
+
+        function updateTable(data) {
+            trafficTable.innerHTML = "";
+            data.forEach((item, index) => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td class="${item.traffic === "Intrusion Detected" ? "red" : "green"}">
+                        ${item.traffic}
+                    </td>
+                    <td>${item.confidence}%</td>
+                `;
+                trafficTable.appendChild(row);
+            });
+        }
+
+        function checkIntrusionAlert(data) {
+            const intrusion = data.some(item => item.traffic === "Intrusion Detected");
+            alertBox.style.display = intrusion ? "block" : "none";
+        }
+
+        function updateChart(data) {
+            chartData = data.map((item, index) => ({ id: index + 1, confidence: item.confidence * 100 }));
+            if (chartInstance) chartInstance.destroy();
+            const ctx = document.getElementById("traffic-chart").getContext("2d");
+            chartInstance = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: chartData.map(d => d.id),
+                    datasets: [{
+                        label: "Confidence (%)",
+                        data: chartData.map(d => d.confidence),
+                        borderColor: "#82ca9d",
+                        borderWidth: 2,
+                        fill: false
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: { title: { display: true, text: "Packet ID" } },
+                        y: { title: { display: true, text: "Confidence (%)" } }
+                    }
+                }
+            });
+        }
+
+        function openChatbot() {
+            window.open("chatbot.html", "_blank", "width=400,height=500");
+        }
+
+        refreshButton.addEventListener("click", fetchTrafficData);
+        setInterval(fetchTrafficData, 10000);
+        fetchTrafficData();
+    </script>
+</body>
+</html> -->
+
+
+<!-- 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intrusion Detection System</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: auto;
+        }
+
+        #alert-box {
+            background-color: red;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        button {
+            background-color: blue;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .table-container {
+            background: #222;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border: 1px solid gray;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #444;
+        }
+
+        .chart-container {
+            background: #222;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .red {
+            color: red;
+            font-weight: bold;
+        }
+
+        .green {
+            color: lime;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Intrusion Detection Dashboard</h1>
+
+        <div id="alert-box" class="hidden">⚠️ Intrusion detected! Check logs.</div>
+
+        <button id="refresh-btn">🔄 Refresh Live Traffic</button>
+
+        <div class="table-container">
+            <h2>📊 Live Network Traffic</h2>
+            <table id="traffic-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Prediction</th>
+                        <th>Confidence (%)</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="chart-container">
+            <h2>📈 Intrusion Confidence Over Time</h2>
+            <canvas id="traffic-chart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:5000"; // Change to your backend URL
+
+        const trafficTable = document.querySelector("#traffic-table tbody");
+        const alertBox = document.getElementById("alert-box");
+        const refreshButton = document.getElementById("refresh-btn");
+
+        let chartData = [];
+        let chartInstance;
+
+        // Fetch live traffic data
+        let controller;
+
+        async function fetchLiveTraffic() {
+            if (controller) controller.abort(); // Cancel previous request
+            controller = new AbortController();
+            
+            try {
+                const response = await fetch(`${API_URL}/live_traffic`, { signal: controller.signal });
+                const data = await response.json();
+        
+                console.log("Traffic Data:", data);
+        
+                if (!data.results || data.results.length === 0) {
+                    alertBox.textContent = "⚠️ No network traffic data!";
+                    alertBox.classList.remove("hidden");
+                    return;
+                }
+        
+                updateTable(data.results);
+                updateChart(data.results);
+                checkIntrusionAlert(data.results);
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error("Error fetching traffic data:", error);
+                    alertBox.textContent = "⚠️ Error fetching data!";
+                    alertBox.classList.remove("hidden");
+                }
+            }
+        }
+        
+        // Update traffic table
+        function updateTable(data) {
+            trafficTable.innerHTML = "";
+            data.forEach((item, index) => {
+                const row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td class="${item.traffic === "Intrusion Detected" ? "red" : "green"}">${item.traffic}</td>
+                    <td>${(item.confidence * 100).toFixed(2)}%</td>
+                `;
+                trafficTable.appendChild(row);
+            });
+        }
+
+        // Check for intrusion alerts
+        function checkIntrusionAlert(data) {
+            const intrusion = data.some(item => item.traffic === "Intrusion Detected");
+            if (intrusion) {
+                alertBox.classList.remove("hidden");
+            } else {
+                alertBox.classList.add("hidden");
+            }
+        }
+
+        // Update chart
+        function updateChart(data) {
+            chartData = data.map((item, index) => ({
+                id: index + 1,
+                confidence: item.confidence * 100
+            }));
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            const ctx = document.getElementById("traffic-chart").getContext("2d");
+            chartInstance = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: chartData.map(d => d.id),
+                    datasets: [{
+                        label: "Confidence (%)",
+                        data: chartData.map(d => d.confidence),
+                        borderColor: "#82ca9d",
+                        borderWidth: 2,
+                        fill: false
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: { title: { display: true, text: "Packet ID" } },
+                        y: { title: { display: true, text: "Confidence (%)" } }
+                    }
+                }
+            });
+        }
+
+        // Refresh button event
+        refreshButton.addEventListener("click", fetchLiveTraffic);
+
+        // Auto-refresh every 10 seconds
+        setInterval(fetchLiveTraffic, 10000);
+
+        // Initial load
+        fetchLiveTraffic();
+    </script>
+</body>
+</html>-->
+
+<!-- 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intrusion Detection System</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+        }
+
+        .hidden {
+            display: none;
+        }
+        
+        #alert-box {
+            padding: 10px;
+            font-weight: bold;
+            border-radius: 5px;
+            text-align: center;
+            margin: 10px 0;
+            background-color: #ffcccc;
+            color: red;
+        }
+        
+
+        button {
+            background-color: blue;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .table-container, .chart-container {
+            background: #222;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border: 1px solid gray;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #444;
+        }
+
+        .red {
+            color: red;
+            font-weight: bold;
+        }
+
+        .green {
+            color: lime;
+            font-weight: bold;
+        }
+
+        #chatbot-btn {
+            background-color: #ff9800;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Intrusion Detection Dashboard</h1>
+        <div id="alert-box" class="hidden"></div>
+        <div id="chatbot-box" class="hidden"></div>
+
+
+        <button id="refresh-btn">🔄 Refresh Live Traffic</button>
+        
+        <div class="table-container">
+            <h2>📊 Live Network Traffic</h2>
+            <table id="traffic-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Threat Type</th>
+                        <th>Confidence</th>
+                        <th>Traffic</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody id="traffic-table-body"></tbody>
+            </table>
+            
+        </div>
+
+        <div class="chart-container">
+            <h2>📈 Intrusion Trends</h2>
+            <canvas id="traffic-chart"></canvas>
+        </div>
+    </div>
+
+    <button id="chatbot-btn">💬 AI Security Assistant</button>
+
+    <script>
+        const API_URL = "http://127.0.0.1:5000";
+        const trafficTable = document.querySelector("#traffic-table tbody");
+        const alertBox = document.getElementById("alert-box");
+        const refreshButton = document.getElementById("refresh-btn");
+        let chartInstance;
+
+        async function fetchLiveTraffic() {
+            try {
+                const response = await fetch("http://127.0.0.1:5000/live_traffic"); // Correct API endpoint
+                const data = await response.json();
+        
+                // Debugging: Log the API response in console
+                console.log("Received data:", data);
+        
+                // Handle missing or incorrect data
+                if (!data.results || data.results.length === 0) {
+                    alertBox.textContent = "⚠️ No network traffic data!";
+                    alertBox.classList.remove("hidden");
+                    return;
+                }
+        
+                // Call functions to update UI
+                updateTable(data.results);
+                updateChart(data.results);
+                checkIntrusionAlert(data.results);
+        
+            } catch (error) {
+                console.error("Error fetching traffic data:", error);
+                alertBox.textContent = "⚠️ Error fetching data!";
+                alertBox.classList.remove("hidden");
+            }
+        }
+        
+
+        function updateTable(trafficData) {
+            const tableBody = document.getElementById("traffic-table-body");
+            tableBody.innerHTML = ""; // Clear previous entries
+        
+            trafficData.forEach((entry, index) => {
+                const row = document.createElement("tr");
+        
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${entry.threat_type}</td>
+                    <td>${entry.confidence}</td>
+                    <td>${entry.traffic}</td>
+                    <td>${entry.timestamp}</td>
+                `;
+        
+                tableBody.appendChild(row);
+            });
+        }
+        function checkIntrusionAlert(trafficData) {
+            const alertBox = document.getElementById("alert-box");
+        
+            const hasIntrusion = trafficData.some(entry => entry.traffic === "Intrusion Detected");
+        
+            if (hasIntrusion) {
+                alertBox.textContent = "⚠️ Intrusion Detected! Take Action!";
+                alertBox.classList.remove("hidden"); // Show alert
+            } else {
+                alertBox.classList.add("hidden"); // Hide if no intrusion
+            }
+        }
+        
+        
+        
+
+        async function sendAlert(message) {
+            fetch("http://127.0.0.1:5000/send_alert", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ message: "Suspicious activity detected!" })
+            })
+            .then(response => response.json())
+            .then(data => console.log(data))
+            .catch(error => console.error("Error:", error));
+            
+        }
+
+        function updateChart(data) {
+            const chartData = data.map((item, index) => ({ id: index + 1, confidence: item.confidence * 100 }));
+            if (chartInstance) chartInstance.destroy();
+            const ctx = document.getElementById("traffic-chart").getContext("2d");
+            chartInstance = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: chartData.map(d => d.id),
+                    datasets: [{
+                        label: "Confidence (%)",
+                        data: chartData.map(d => d.confidence),
+                        borderColor: "#82ca9d",
+                        borderWidth: 2,
+                        fill: false
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: { title: { display: true, text: "Packet ID" } },
+                        y: { title: { display: true, text: "Confidence (%)" } }
+                    }
+                }
+            });
+        }
+
+        function triggerChatbotResponse(trafficData) {
+            const chatbotBox = document.getElementById("chatbot-box");
+        
+            const latestThreat = trafficData.find(entry => entry.traffic === "Intrusion Detected");
+            
+            if (latestThreat) {
+                chatbotBox.textContent = `🤖 AI Bot: I detected a ${latestThreat.threat_type} attack. Please take action!`;
+                chatbotBox.classList.remove("hidden");
+            } else {
+                chatbotBox.classList.add("hidden");
+            }
+        }
+        
+
+        refreshButton.addEventListener("click", fetchLiveTraffic);
+        setInterval(fetchLiveTraffic, 10000);
+        fetchLiveTraffic();
+    </script>
+</body>
+</html> -->
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intrusion Detection System</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .container, .login-container {
+            max-width: 900px;
+            margin: auto;
+        }
+
+        .hidden {
+            display: none;
+        }
+        
+        #alert-box {
+            padding: 10px;
+            font-weight: bold;
+            border-radius: 5px;
+            text-align: center;
+            margin: 10px 0;
+            background-color: #ffcccc;
+            color: red;
+        }
+
+        button {
+            background-color: blue;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+
+        .table-container, .chart-container {
+            background: #222;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            border: 1px solid gray;
+            padding: 8px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #444;
+        }
+
+        .red {
+            color: red;
+            font-weight: bold;
+        }
+
+        .green {
+            color: lime;
+            font-weight: bold;
+        }
+
+        #chatbot-btn {
+            background-color: #ff9800;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container" id="login-container">
+        <h1>Login</h1>
+        <form id="login-form">
+            <input type="text" id="username" placeholder="Username" required>
+            <input type="password" id="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+        <div id="login-error" class="hidden" style="color: red; margin-top: 10px;">Invalid credentials, please try again.</div>
+    </div>
+
+    <div class="container hidden" id="dashboard-container">
+        <h1>🚀 Intrusion Detection Dashboard</h1>
+        <div id="alert-box" class="hidden"></div>
+
+        <button id="refresh-btn">🔄 Refresh Live Traffic</button>
+        
+        <div class="table-container">
+            <h2>📊 Live Network Traffic</h2>
+            <table id="traffic-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Threat Type</th>
+                        <th>Confidence</th>
+                        <th>Traffic</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody id="traffic-table-body"></tbody>
+            </table>
+        </div>
+
+        <div class="chart-container">
+            <h2>📈 Intrusion Trends</h2>
+            <canvas id="traffic-chart"></canvas>
+        </div>
+    </div>
+
+    <button id="chatbot-btn">💬 AI Security Assistant</button>
+
+    <script>
+        const API_URL = "http://127.0.0.1:5000";
+        const trafficTable = document.querySelector("#traffic-table tbody");
+        const alertBox = document.getElementById("alert-box");
+        const refreshButton = document.getElementById("refresh-btn");
+        let chartInstance;
+
+        document.getElementById("login-form").addEventListener("submit", function(event) {
+            event.preventDefault();
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+
+            // Simple login validation
+            if (username === "admin" && password === "password") {
+                sessionStorage.setItem("loggedIn", true); // Set login status
+                document.getElementById("login-container").classList.add("hidden");
+                document.getElementById("dashboard-container").classList.remove("hidden");
+                fetchLiveTraffic();
+            } else {
+                document.getElementById("login-error").classList.remove("hidden");
+            }
+        });
+
+        // Check if the user is logged in
+        if (sessionStorage.getItem("loggedIn")) {
+            document.getElementById("login-container").classList.add("hidden");
+            document.getElementById("dashboard-container").classList.remove("hidden");
+            fetchLiveTraffic();
+        }
+
+        async function fetchLiveTraffic() {
+            try {
+                const response = await fetch("${API_URL}/live_traffic");
+                const data = await response.json();
+        
+                // Debugging: Log the API response in console
+                console.log("Received data:", data);
+        
+                // Handle missing or incorrect data
+                if (!data.results || data.results.length === 0) {
+                    alertBox.textContent = "⚠ No network traffic data!";
+                    alertBox.classList.remove("hidden");
+                    return;
+                }
+        
+                // Call functions to update UI
+                updateTable(data.results);
+                updateChart(data.results);
+                checkIntrusionAlert(data.results);
+        
+            } catch (error) {
+                console.error("Error fetching traffic data:", error);
+                alertBox.textContent = "⚠ Error fetching data!";
+                alertBox.classList.remove("hidden");
+            }
+        }
+
+        function updateTable(trafficData) {
+            const tableBody = document.getElementById("traffic-table-body");
+            tableBody.innerHTML = ""; // Clear previous entries
+        
+            trafficData.forEach((entry, index) => {
+                const row = document.createElement("tr");
+        
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${entry.threat_type}</td>
+                    <td>${entry.confidence}</td>
+                    <td>${entry.traffic}</td>
+                    <td>${entry.timestamp}</td>
+                `;
+        
+                tableBody.appendChild(row);
+            });
+        }
+
+        function checkIntrusionAlert(trafficData) {
+            const alertBox = document.getElementById("alert-box");
+        
+            const hasIntrusion = trafficData.some(entry => entry.traffic === "Intrusion Detected");
+        
+            if (hasIntrusion) {
+                alertBox.textContent = "⚠ Intrusion Detected! Take Action!";
+                alertBox.classList.remove("hidden"); // Show alert
+            } else {
+                alertBox.classList.add("hidden"); // Hide if no intrusion
+            }
+        }
+
+        async function sendAlert(message) {
+            fetch("${API_URL}/send_alert", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ message: "Suspicious activity detected!" })
+            })
+            .then(response => response.json())
+            .then(data => console.log(data))
+            .catch(error => console.error("Error:", error));
+        }
+
+        function updateChart(data) {
+            const chartData = data.map((item, index) => ({ id: index + 1, confidence: item.confidence * 100 }));
+            if (chartInstance) chartInstance.destroy();
+            const ctx = document.getElementById("traffic-chart").getContext("2d");
+            chartInstance = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: chartData.map(d => d.id),
+                    datasets: [{
+                        label: "Confidence (%)",
+                        data: chartData.map(d => d.confidence),
+                        borderColor: "#82ca9d",
+                        borderWidth: 2,
+                        fill: false
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: { title: { display: true, text: "Packet ID" } },
+                        y: { title: { display: true, text: "Confidence (%)" } }
+                    }
+                }
+            });
+        }
+
+        document.getElementById("chatbot-btn").addEventListener("click", () => {
+            window.location.href = "${API_URL}/chatbot";
+        });
+
+        refreshButton.addEventListener("click", fetchLiveTraffic);
+        setInterval(fetchLiveTraffic, 10000);
+    </script>
+</body>
+</html>
+
+ -->
+
+
+
+ <!DOCTYPE html>
+ <html lang="en">
+ <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Intrusion Detection System</title>
+     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+     <style>
+         body {
+             font-family: Arial, sans-serif;
+             background-color: #1a1a1a;
+             color: white;
+             text-align: center;
+             padding: 20px;
+         }
+ 
+         .container {
+             max-width: 900px;
+             margin: auto;
+         }
+ 
+         .hidden {
+             display: none;
+         }
+         
+         #alert-box {
+             padding: 10px;
+             font-weight: bold;
+             border-radius: 5px;
+             text-align: center;
+             margin: 10px 0;
+             background-color: #ffcccc;
+             color: red;
+         }
+         
+ 
+         button {
+             background-color: blue;
+             color: white;
+             padding: 10px 15px;
+             border: none;
+             cursor: pointer;
+             margin-bottom: 10px;
+         }
+ 
+         .table-container, .chart-container {
+             background: #222;
+             padding: 15px;
+             border-radius: 10px;
+             margin-top: 20px;
+         }
+ 
+         table {
+             width: 100%;
+             border-collapse: collapse;
+             margin-top: 10px;
+         }
+ 
+         th, td {
+             border: 1px solid gray;
+             padding: 8px;
+             text-align: center;
+         }
+ 
+         th {
+             background-color: #444;
+         }
+ 
+         .red {
+             color: red;
+             font-weight: bold;
+         }
+ 
+         .green {
+             color: lime;
+             font-weight: bold;
+         }
+ 
+         #chatbot-btn {
+             background-color: #ff9800;
+             position: fixed;
+             bottom: 20px;
+             right: 20px;
+             padding: 10px 20px;
+             border-radius: 50px;
+             font-size: 16px;
+             cursor: pointer;
+         }
+     </style>
+ </head>
+ <body>
+     <div class="container">
+         <h1>🚀 Intrusion Detection Dashboard</h1>
+         <div id="alert-box" class="hidden"></div>
+ 
+         <button id="refresh-btn">🔄 Refresh Live Traffic</button>
+         
+         <div class="table-container">
+             <h2>📊 Live Network Traffic</h2>
+             <table id="traffic-table">
+                 <thead>
+                     <tr>
+                         <th>#</th>
+                         <th>Threat Type</th>
+                         <th>Confidence</th>
+                         <th>Traffic</th>
+                         <th>Timestamp</th>
+                     </tr>
+                 </thead>
+                 <tbody id="traffic-table-body"></tbody>
+             </table>
+             
+         </div>
+ 
+         <div class="chart-container">
+             <h2>📈 Intrusion Trends</h2>
+             <canvas id="traffic-chart"></canvas>
+         </div>
+     </div>
+ 
+     <button id="chatbot-btn">💬 AI Security Assistant</button>
+ 
+     <script>
+         const API_URL = "http://127.0.0.1:5000";
+         const trafficTable = document.querySelector("#traffic-table tbody");
+         const alertBox = document.getElementById("alert-box");
+         const refreshButton = document.getElementById("refresh-btn");
+         let chartInstance;
+ 
+         async function fetchLiveTraffic() {
+             try {
+                 const response = await fetch("http://127.0.0.1:5000/live_traffic"); // Correct API endpoint
+                 const data = await response.json();
+         
+                 // Debugging: Log the API response in console
+                 console.log("Received data:", data);
+         
+                 // Handle missing or incorrect data
+                 if (!data.results || data.results.length === 0) {
+                     alertBox.textContent = "⚠ No network traffic data!";
+                     alertBox.classList.remove("hidden");
+                     return;
+                 }
+         
+                 // Call functions to update UI
+                 updateTable(data.results);
+                 updateChart(data.results);
+                 checkIntrusionAlert(data.results);
+         
+             } catch (error) {
+                 console.error("Error fetching traffic data:", error);
+                 alertBox.textContent = "⚠ Error fetching data!";
+                 alertBox.classList.remove("hidden");
+             }
+         }
+         
+ 
+         function updateTable(trafficData) {
+             const tableBody = document.getElementById("traffic-table-body");
+             tableBody.innerHTML = ""; // Clear previous entries
+         
+             trafficData.forEach((entry, index) => {
+                 const row = document.createElement("tr");
+         
+                 row.innerHTML = `
+                     <td>${index + 1}</td>
+                     <td>${entry.threat_type}</td>
+                     <td>${entry.confidence}</td>
+                     <td>${entry.traffic}</td>
+                     <td>${entry.timestamp}</td>
+                 `;
+         
+                 tableBody.appendChild(row);
+             });
+         }
+         function checkIntrusionAlert(trafficData) {
+             const alertBox = document.getElementById("alert-box");
+         
+             const hasIntrusion = trafficData.some(entry => entry.traffic === "Intrusion Detected");
+         
+             if (hasIntrusion) {
+                 alertBox.textContent = "⚠ Intrusion Detected! Take Action!";
+                 alertBox.classList.remove("hidden"); // Show alert
+             } else {
+                 alertBox.classList.add("hidden"); // Hide if no intrusion
+             }
+         }
+         
+         
+         
+ 
+         async function sendAlertNotification(message) {
+            fetch("http://127.0.0.1:5000/send_alert", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ message: "Alert from frontend" })
+            })
+            .then(response => response.json())
+            .then(data => console.log(data))
+            .catch(error => console.error("Error:", error));
+            
+         }
+ 
+         function updateChart(data) {
+             const chartData = data.map((item, index) => ({ id: index + 1, confidence: item.confidence * 100 }));
+             if (chartInstance) chartInstance.destroy();
+             const ctx = document.getElementById("traffic-chart").getContext("2d");
+             chartInstance = new Chart(ctx, {
+                 type: "line",
+                 data: {
+                     labels: chartData.map(d => d.id),
+                     datasets: [{
+                         label: "Confidence (%)",
+                         data: chartData.map(d => d.confidence),
+                         borderColor: "#82ca9d",
+                         borderWidth: 2,
+                         fill: false
+                     }]
+                 },
+                 options: {
+                     scales: {
+                         x: { title: { display: true, text: "Packet ID" } },
+                         y: { title: { display: true, text: "Confidence (%)" } }
+                     }
+                 }
+             });
+         }
+ 
+         document.getElementById("chatbot-btn").addEventListener("click", () => {
+             window.location.href ="http://127.0.0.1:5000/chatbot" ;
+         });
+ 
+         refreshButton.addEventListener("click", fetchLiveTraffic);
+         setInterval(fetchLiveTraffic, 10000);
+         fetchLiveTraffic();
+     </script>
+ </body>
+ </html>
