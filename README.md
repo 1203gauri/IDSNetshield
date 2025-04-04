@@ -4,6 +4,10 @@ NetShield is a deep learning-based Intrusion Detection System (IDS) designed to 
 
 ---
 
+## 🔗 Demo
+
+Check out the live demo here: [NetShield Live Demo](https://www.loom.com/share/94686d795d364988b3da85c79e3976c0?sid=aab3f246-f9e6-4525-8f40-a800b2cc733c)  
+
 ## 🚀 Features
 
 - 🧠 **LSTM-based Intrusion Detection Model**
